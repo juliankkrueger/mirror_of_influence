@@ -461,16 +461,12 @@
       <p class="label text-cyan" style="margin-bottom:6px">Abschlussfragen</p>
       <h3 class="font-heading" style="font-size:16px;margin-bottom:20px">Der radikale Spiegel</h3>
       <div class="question-block">
-        <p class="question-label"><strong>Die wichtigste Spiegel-Frage</strong><br>In welchem dieser Bereiche hat dieser Mentor aktuell den geringsten Einfluss auf dich?</p>
+        <p class="question-label"><strong>Geringster Einfluss</strong><br>In welchem dieser Bereiche hat dieser Mentor aktuell den geringsten Einfluss auf dich?</p>
         <textarea class="input" id="global-spiegel" placeholder="Offen antworten..." rows="3"></textarea>
       </div>
       <div class="question-block">
-        <p class="question-label"><strong>Die brutalste Abschlussfrage</strong><br>Wenn diese Person nicht dein Vorgesetzter wäre – in welchen Bereichen würdest du dich trotzdem freiwillig an ihr orientieren?</p>
-        <textarea class="input" id="global-abschluss" placeholder="Offen antworten..." rows="3"></textarea>
-      </div>
-      <div class="question-block">
-        <p class="question-label"><strong>Blinde Flecken des Mentors</strong><br>Welche Fähigkeit oder Eigenschaft müsste dieser Mentor aus deiner Sicht am dringendsten entwickeln, um mehr Einfluss auf dich zu haben?</p>
-        <textarea class="input" id="global-blindeFlecken" placeholder="Offen antworten..." rows="3"></textarea>
+        <p class="question-label"><strong>Größtes Potenzial</strong><br>In welchem Bereich hätte dieser Mentor aus deiner Sicht das größte Potenzial, seinen Einfluss zu verbessern?</p>
+        <textarea class="input" id="global-potenzial" placeholder="Offen antworten..." rows="3"></textarea>
       </div>
     </div>
     <button class="btn btn-primary" style="width:100%;font-size:16px;padding:18px;margin-top:24px" id="submit-btn" onclick="submitFeedback()">
@@ -505,56 +501,63 @@ const CATEGORIES = [
     name: 'Selbstführung',
     desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, sich selbst zu organisieren und ihr eigenes Leben zu führen. Dazu gehören Zeitmanagement, Priorisierung, Selbstdisziplin, Stressmanagement, Reflexionsfähigkeit und der Umgang mit persönlichen Herausforderungen.',
     bedarf: 'Wenn du in diesem Bereich Orientierung suchst – würdest du dir grundsätzlich Rat von anderen Menschen holen?',
-    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person, die du dafür in Betracht ziehen würdest?',
-    vergleich: 'Verglichen mit einer Person, die du in diesem Bereich als Vorbild siehst – wie nah kommt dieser Mentor daran?',
-    reflexion: 'In welchen Situationen wirkt diese Person auf dich selbst unstrukturiert oder überfordert?'
+    eignung: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor grundsätzlich eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor dein Denken, Verhalten oder deine Entscheidungen aktuell in diesem Bereich?',
+    vergleich: 'Verglichen mit einem idealen, bestmöglichen Vorbild in diesem Bereich – also einer Person, die dieses Thema außergewöhnlich gut verkörpert – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen Situationen wirkt diese Person für dich selbst unstrukturiert oder überfordert?'
   },
   {
     name: 'Fachliche Autorität',
     desc: 'Diese Kategorie beschreibt die fachliche Kompetenz und Expertise des Mentors. Dazu gehören Wissen, Erfahrung, Problemlösungskompetenz, Qualität der Arbeit und die Fähigkeit, komplexe fachliche Zusammenhänge zu verstehen und zu erklären.',
     bedarf: 'Wenn du fachliche Orientierung suchst – würdest du dir grundsätzlich Rat von anderen Menschen holen?',
-    influence: 'Wenn du fachlichen Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
-    vergleich: 'Verglichen mit einer Person, die du fachlich als absolute Koryphäe siehst – wie nah kommt dieser Mentor daran?',
+    eignung: 'Wenn du fachlichen Rat suchen würdest – wäre dieser Mentor grundsätzlich eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor dein Denken oder deine Entscheidungen aktuell in fachlichen Fragen?',
+    vergleich: 'Verglichen mit einer idealen fachlichen Koryphäe in diesem Bereich – wie nah kommt dieser Mentor daran?',
     reflexion: 'In welchen fachlichen Bereichen würdest du diese Person nicht um Rat fragen?'
   },
   {
     name: 'Auftreten & Wirkung',
-    desc: 'Diese Kategorie beschreibt die Wirkung einer Person auf andere Menschen. Dazu gehören Kommunikation, Körpersprache, Präsenz, Klarheit in Gesprächen, Überzeugungskraft und die Fähigkeit, Aufmerksamkeit und Vertrauen zu erzeugen.',
+    desc: 'Diese Kategorie beschreibt die Wirkung einer Person auf andere Menschen. Dazu gehören Kommunikation, Körpersprache, Präsenz, Überzeugungskraft und die Fähigkeit, Aufmerksamkeit und Vertrauen zu erzeugen.',
     bedarf: 'Wenn du deine Wirkung oder Kommunikation verbessern möchtest – würdest du dir dafür grundsätzlich Rat von anderen Menschen holen?',
-    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
-    vergleich: 'Verglichen mit einer Person, deren Auftreten du sehr bewunderst – wie nah kommt dieser Mentor daran?',
+    eignung: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor dein Auftreten oder deine Kommunikation aktuell?',
+    vergleich: 'Verglichen mit einem idealen Vorbild für Auftreten und Kommunikation – wie nah kommt dieser Mentor daran?',
     reflexion: 'In welchen Situationen verliert diese Person aus deiner Sicht an Wirkung oder Präsenz?'
   },
   {
     name: 'Soziale Kompetenz',
-    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, mit anderen Menschen gut umzugehen. Dazu gehören Empathie, Zuhören, Konfliktfähigkeit, respektvolle Kommunikation, Verständnis für unterschiedliche Perspektiven und ein konstruktiver Umgang mit Beziehungen.',
+    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, mit anderen Menschen konstruktiv umzugehen. Dazu gehören Empathie, Zuhören, Konfliktfähigkeit, respektvolle Kommunikation und Verständnis für unterschiedliche Perspektiven.',
     bedarf: 'Wenn du dich im Umgang mit Menschen weiterentwickeln möchtest – würdest du dir dafür Rat von anderen Menschen holen?',
-    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
-    vergleich: 'Verglichen mit einer Person, die du für besonders sozial kompetent hältst – wie nah kommt dieser Mentor daran?',
+    eignung: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor aktuell deinen Umgang mit anderen Menschen?',
+    vergleich: 'Verglichen mit einer Person, die du für außergewöhnlich sozial kompetent hältst – wie nah kommt dieser Mentor daran?',
     reflexion: 'In welchen Situationen wirkt diese Person für dich sozial unsicher oder wenig empathisch?'
   },
   {
     name: 'Gesundheit & Energie',
     desc: 'Diese Kategorie beschreibt den Umgang mit körperlicher und mentaler Energie. Dazu gehören Fitness, Ernährung, Schlaf, Belastbarkeit, Regeneration und die Fähigkeit, langfristig leistungsfähig zu bleiben.',
     bedarf: 'Wenn du deine Gesundheit oder Leistungsfähigkeit verbessern möchtest – würdest du dir dafür Rat von anderen Menschen holen?',
-    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
-    vergleich: 'Verglichen mit einer Person, deren Lebensstil du als sehr gesund und leistungsfähig wahrnimmst – wie nah kommt dieser Mentor daran?',
+    eignung: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor aktuell dein Denken oder Verhalten im Bereich Gesundheit und Energie?',
+    vergleich: 'Verglichen mit einer Person, deren Lebensstil du als außergewöhnlich gesund und leistungsfähig wahrnimmst – wie nah kommt dieser Mentor daran?',
     reflexion: 'In welchen Bereichen wirkt der Lebensstil dieser Person für dich nicht überzeugend?'
   },
   {
     name: 'Leadership & Verantwortung',
-    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, Verantwortung zu übernehmen und andere zu führen. Dazu gehören Entscheidungsfähigkeit, Klarheit, Konsequenz, Umgang mit Konflikten, Verantwortung für Ergebnisse und die Fähigkeit, Orientierung zu geben.',
+    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, Verantwortung zu übernehmen und andere zu führen. Dazu gehören Entscheidungsfähigkeit, Klarheit, Konsequenz, Umgang mit Konflikten und die Fähigkeit, Orientierung zu geben.',
     bedarf: 'Wenn du dich im Bereich Führung oder Verantwortung weiterentwickeln möchtest – würdest du dir dafür Rat von anderen Menschen holen?',
-    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
-    vergleich: 'Verglichen mit einer Person, die du als starke Führungspersönlichkeit wahrnimmst – wie nah kommt dieser Mentor daran?',
+    eignung: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor aktuell dein Verständnis von Führung oder Verantwortung?',
+    vergleich: 'Verglichen mit einer Person, die du als außergewöhnlich starke Führungspersönlichkeit wahrnimmst – wie nah kommt dieser Mentor daran?',
     reflexion: 'In welchen Situationen wirkt diese Person für dich nicht wie eine echte Führungspersönlichkeit?'
   },
   {
     name: 'Finanzielle Kompetenz',
-    desc: 'Diese Kategorie beschreibt den Umgang mit Geld und wirtschaftlichen Entscheidungen. Dazu gehören finanzielle Planung, Vermögensaufbau, wirtschaftliches Denken, langfristige Entscheidungen und Verantwortung im Umgang mit Ressourcen.',
+    desc: 'Diese Kategorie beschreibt den Umgang mit Geld und wirtschaftlichen Entscheidungen. Dazu gehören finanzielle Planung, Vermögensaufbau, wirtschaftliches Denken und langfristige Entscheidungen.',
     bedarf: 'Wenn du finanzielle Entscheidungen treffen musst – würdest du dir dafür Rat von anderen Menschen holen?',
-    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
-    vergleich: 'Verglichen mit einer Person, die du finanziell sehr kompetent findest – wie nah kommt dieser Mentor daran?',
+    eignung: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine geeignete Person dafür?',
+    aktuelleWirkung: 'Wie stark beeinflusst dieser Mentor aktuell dein Denken oder Verhalten im Umgang mit Geld?',
+    vergleich: 'Verglichen mit einer Person, die du finanziell als außergewöhnlich kompetent wahrnimmst – wie nah kommt dieser Mentor daran?',
     reflexion: 'In welchen finanziellen Themen würdest du dieser Person keinen Rat zutrauen?'
   }
 ]
@@ -796,11 +799,15 @@ function buildSurvey() {
         ${buildRatingButtons(idx, 'bedarf')}
       </div>
       <div class="question-block">
-        <p class="question-label"><strong>Mentor Influence</strong><br>${cat.influence}</p>
-        ${buildRatingButtons(idx, 'influence')}
+        <p class="question-label"><strong>Eignung des Mentors</strong><br>${cat.eignung}</p>
+        ${buildRatingButtons(idx, 'eignung')}
       </div>
       <div class="question-block">
-        <p class="question-label"><strong>Vergleich mit Idealperson</strong><br>${cat.vergleich}</p>
+        <p class="question-label"><strong>Aktuelle Wirkung</strong><br>${cat.aktuelleWirkung}</p>
+        ${buildRatingButtons(idx, 'aktuelleWirkung')}
+      </div>
+      <div class="question-block">
+        <p class="question-label"><strong>Vergleich mit idealem Vorbild</strong><br>${cat.vergleich}</p>
         ${buildRatingButtons(idx, 'vergleich')}
       </div>
       <div class="question-block">
@@ -837,7 +844,8 @@ function submitFeedback() {
     }
     return {
       bedarf: getVal('bedarf'),
-      influence: getVal('influence'),
+      eignung: getVal('eignung'),
+      aktuelleWirkung: getVal('aktuelleWirkung'),
       vergleich: getVal('vergleich'),
       reflexion: document.getElementById(`reflexion-${idx}`)?.value.trim() || ''
     }
@@ -845,7 +853,7 @@ function submitFeedback() {
 
   for (let i = 0; i < categories.length; i++) {
     const c = categories[i]
-    if (!c.bedarf || !c.influence || !c.vergleich) {
+    if (!c.bedarf || !c.eignung || !c.aktuelleWirkung || !c.vergleich) {
       showToast(`Bitte alle Bewertungen in "${CATEGORIES[i].name}" ausfüllen.`)
       document.getElementById(`cat-section-${i}`).scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
@@ -854,8 +862,7 @@ function submitFeedback() {
 
   const global = {
     spiegel: document.getElementById('global-spiegel').value.trim(),
-    abschluss: document.getElementById('global-abschluss').value.trim(),
-    blindeFlecken: document.getElementById('global-blindeFlecken').value.trim()
+    potenzial: document.getElementById('global-potenzial').value.trim()
   }
 
   document.getElementById('submit-btn').disabled = true

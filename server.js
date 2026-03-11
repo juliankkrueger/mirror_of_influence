@@ -180,23 +180,24 @@ function generatePDFHtml(session, logoBase64) {
 
   const catStats = CATEGORY_NAMES.map((name, idx) => {
     const bedarfVals = session.submissions.map(s => s.categories?.[idx]?.bedarf).filter(Number.isFinite)
-    const influenceVals = session.submissions.map(s => s.categories?.[idx]?.influence).filter(Number.isFinite)
+    const eignungVals = session.submissions.map(s => s.categories?.[idx]?.eignung).filter(Number.isFinite)
+    const aktuelleWirkungVals = session.submissions.map(s => s.categories?.[idx]?.aktuelleWirkung).filter(Number.isFinite)
     const vergleichVals = session.submissions.map(s => s.categories?.[idx]?.vergleich).filter(Number.isFinite)
     const reflexionen = session.submissions.map(s => s.categories?.[idx]?.reflexion).filter(t => t?.trim())
     return {
       name,
       bedarf: { avg: avg(bedarfVals), dist: dist(bedarfVals) },
-      influence: { avg: avg(influenceVals), dist: dist(influenceVals) },
+      eignung: { avg: avg(eignungVals), dist: dist(eignungVals) },
+      aktuelleWirkung: { avg: avg(aktuelleWirkungVals), dist: dist(aktuelleWirkungVals) },
       vergleich: { avg: avg(vergleichVals), dist: dist(vergleichVals) },
       reflexionen,
-      influenceAvgNum: parseFloat(avg(influenceVals)) || 0
+      aktuelleWirkungAvgNum: parseFloat(avg(aktuelleWirkungVals)) || 0
     }
   })
 
   const globalAnswers = {
     spiegel: session.submissions.map(s => s.global?.spiegel).filter(t => t?.trim()),
-    abschluss: session.submissions.map(s => s.global?.abschluss).filter(t => t?.trim()),
-    blindeFlecken: session.submissions.map(s => s.global?.blindeFlecken).filter(t => t?.trim())
+    potenzial: session.submissions.map(s => s.global?.potenzial).filter(t => t?.trim())
   }
 
   const distBar = (d, total) => [1, 2, 3, 4, 5].map(v => {
@@ -218,14 +219,18 @@ function generatePDFHtml(session, logoBase64) {
   const catSections = catStats.map(cat => `
     <div style="margin-bottom:24px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,233,185,0.25);border-radius:10px;padding:18px;page-break-inside:avoid">
       <h3 style="color:#00E9B9;font-family:Unbounded,sans-serif;font-size:12px;letter-spacing:1px;margin:0 0 14px 0;text-transform:uppercase">${cat.name}</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
         <div>
           <p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:1px;margin:0 0 6px 0">BEDARF · Ø ${cat.bedarf.avg}</p>
           ${distBar(cat.bedarf.dist, session.submissions.length)}
         </div>
         <div>
-          <p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:1px;margin:0 0 6px 0">MENTOR INFLUENCE · Ø ${cat.influence.avg}</p>
-          ${distBar(cat.influence.dist, session.submissions.length)}
+          <p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:1px;margin:0 0 6px 0">EIGNUNG · Ø ${cat.eignung.avg}</p>
+          ${distBar(cat.eignung.dist, session.submissions.length)}
+        </div>
+        <div>
+          <p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:1px;margin:0 0 6px 0">AKTUELLE WIRKUNG · Ø ${cat.aktuelleWirkung.avg}</p>
+          ${distBar(cat.aktuelleWirkung.dist, session.submissions.length)}
         </div>
         <div>
           <p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:1px;margin:0 0 6px 0">VERGLEICH IDEAL · Ø ${cat.vergleich.avg}</p>
@@ -248,8 +253,8 @@ function generatePDFHtml(session, logoBase64) {
   const radarData = JSON.stringify({
     labels: CATEGORY_NAMES.map(n => n.length > 14 ? n.substring(0, 12) + '…' : n),
     datasets: [{
-      label: 'Mentor Influence (Ø)',
-      data: catStats.map(c => c.influenceAvgNum),
+      label: 'Aktuelle Wirkung (Ø)',
+      data: catStats.map(c => c.aktuelleWirkungAvgNum),
       backgroundColor: 'rgba(0,233,185,0.15)',
       borderColor: '#00E9B9',
       borderWidth: 2,
@@ -290,9 +295,8 @@ ${catSections}
 
 <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(92,225,230,0.3);border-radius:10px;padding:20px;margin-top:8px;page-break-inside:avoid">
   <h2 style="font-family:Unbounded,sans-serif;font-size:12px;color:#5CE1E6;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px">Offene Abschlussfragen</h2>
-  ${globalSection('In welchem Bereich hat dieser Mentor aktuell den geringsten Einfluss auf dich?', globalAnswers.spiegel)}
-  ${globalSection('In welchen Bereichen würdest du dich freiwillig an ihr orientieren, auch ohne Hierarchie?', globalAnswers.abschluss)}
-  ${globalSection('Welche Fähigkeit müsste der Mentor am dringendsten entwickeln?', globalAnswers.blindeFlecken)}
+  ${globalSection('In welchem dieser Bereiche hat dieser Mentor aktuell den geringsten Einfluss auf dich?', globalAnswers.spiegel)}
+  ${globalSection('In welchem Bereich hätte dieser Mentor aus deiner Sicht das größte Potenzial, seinen Einfluss zu verbessern?', globalAnswers.potenzial)}
 </div>
 
 <script>
