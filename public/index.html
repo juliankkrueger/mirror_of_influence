@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mirror of Influence — Blueprint Summit</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&family=Noto+Sans+Display:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+<style>
+  :root {
+    --navy: #072330;
+    --teal: #00E9B9;
+    --cyan: #5CE1E6;
+    --text: #FFFFFF;
+    --muted: rgba(255,255,255,0.6);
+    --card: rgba(255,255,255,0.05);
+    --border: rgba(0,233,185,0.3);
+    --border-cyan: rgba(92,225,230,0.3);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    background-color: var(--navy);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800'%3E%3Cg fill='none' stroke='rgba(0,233,185,0.06)' stroke-width='1'%3E%3Cellipse cx='400' cy='400' rx='80' ry='40'/%3E%3Cellipse cx='400' cy='400' rx='160' ry='80'/%3E%3Cellipse cx='400' cy='400' rx='240' ry='120'/%3E%3Cellipse cx='400' cy='400' rx='320' ry='160'/%3E%3Cellipse cx='400' cy='400' rx='400' ry='200'/%3E%3Cellipse cx='400' cy='400' rx='480' ry='240'/%3E%3Cellipse cx='400' cy='400' rx='560' ry='280'/%3E%3Cellipse cx='400' cy='400' rx='640' ry='320'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 800px 800px;
+    color: var(--text);
+    font-family: 'Noto Sans Display', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Typography ── */
+  .font-heading { font-family: 'Unbounded', sans-serif; }
+  .text-teal { color: var(--teal); }
+  .text-cyan { color: var(--cyan); }
+  .text-muted { color: var(--muted); }
+  .label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+
+  /* ── Layout ── */
+  .view { display: none; min-height: 100vh; }
+  .view.active { display: flex; flex-direction: column; }
+  .center { align-items: center; justify-content: center; }
+  .container { max-width: 900px; margin: 0 auto; padding: 0 24px; width: 100%; }
+
+  /* ── Card ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    padding: 32px;
+  }
+  .card-sm { padding: 20px 24px; border-radius: 12px; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 14px 32px; border-radius: 999px; border: none; cursor: pointer;
+    font-family: 'Noto Sans Display', sans-serif; font-weight: 600;
+    font-size: 15px; transition: all 0.2s; text-decoration: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--teal), var(--cyan));
+    color: var(--navy);
+  }
+  .btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+  .btn-outline {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); padding: 12px 28px;
+  }
+  .btn-outline:hover { border-color: var(--teal); color: var(--teal); }
+  .btn-danger {
+    background: rgba(255,80,80,0.15); color: #ff6b6b;
+    border: 1px solid rgba(255,80,80,0.3);
+  }
+  .btn-danger:hover { background: rgba(255,80,80,0.25); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ── Input ── */
+  .input {
+    width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px; padding: 14px 18px; color: var(--text);
+    font-family: 'Noto Sans Display', sans-serif; font-size: 15px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .input:focus { border-color: var(--teal); }
+  .input::placeholder { color: rgba(255,255,255,0.3); }
+
+  /* ── Rating Buttons ── */
+  .rating-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rating-btn {
+    width: 52px; height: 52px; border: 1px solid rgba(0,233,185,0.3);
+    background: rgba(255,255,255,0.04); color: var(--text);
+    border-radius: 10px; cursor: pointer; font-size: 18px;
+    font-family: 'Noto Sans Display', sans-serif; font-weight: 600;
+    transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+  }
+  .rating-btn:hover { border-color: var(--teal); background: rgba(0,233,185,0.1); }
+  .rating-btn.selected {
+    background: linear-gradient(135deg, var(--teal), var(--cyan));
+    color: var(--navy); border-color: transparent;
+  }
+  .rating-scale {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 6px;
+    padding: 0 4px;
+  }
+
+  /* ── Session Cards (Lobby) ── */
+  .sessions-list { display: flex; flex-direction: column; gap: 12px; }
+  .session-card {
+    background: var(--card); border: 1px solid rgba(92,225,230,0.35);
+    border-radius: 14px; padding: 20px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .session-card:hover { border-color: var(--cyan); background: rgba(92,225,230,0.06); transform: translateY(-1px); }
+  .pulse-dot {
+    width: 8px; height: 8px; background: var(--cyan); border-radius: 50%;
+    display: inline-block; margin-right: 6px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+
+  /* ── Progress Counter ── */
+  .progress-bar-outer { width: 100%; background: rgba(255,255,255,0.08); border-radius: 999px; height: 8px; }
+  .progress-bar-inner { height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--teal), var(--cyan)); transition: width 0.5s ease; }
+
+  /* ── Survey ── */
+  .category-section {
+    background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 28px; margin-bottom: 16px;
+  }
+  .question-block { margin-top: 20px; }
+  .question-label { font-size: 14px; color: var(--text); margin-bottom: 10px; line-height: 1.5; }
+  .question-label strong { color: var(--teal); }
+  textarea.input { resize: vertical; min-height: 80px; }
+
+  /* ── Header ── */
+  .top-bar {
+    padding: 16px 32px; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .logo { height: 44px; }
+
+  /* ── QR Code Block ── */
+  .qr-block {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border-cyan);
+    border-radius: 16px; padding: 24px; display: flex; gap: 24px;
+    align-items: center; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .qr-img-wrap {
+    background: #fff; border-radius: 12px; padding: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .qr-link {
+    word-break: break-all; font-family: monospace; font-size: 13px;
+    color: var(--cyan); background: rgba(92,225,230,0.08);
+    border: 1px solid var(--border-cyan); border-radius: 8px;
+    padding: 10px 14px; margin-top: 8px; display: block;
+  }
+  .session-code-badge {
+    font-family: 'Unbounded', sans-serif; font-size: 28px; letter-spacing: 6px;
+    color: var(--teal); background: rgba(0,233,185,0.08);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 20px; display: inline-block; margin-bottom: 8px;
+  }
+
+  /* ── Error Toast ── */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,80,80,0.9); color: #fff; padding: 12px 24px;
+    border-radius: 8px; font-size: 14px; display: none; z-index: 1000;
+    backdrop-filter: blur(10px);
+  }
+
+  /* ── Overlay Modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(7,35,48,0.85);
+    backdrop-filter: blur(8px); display: none;
+    align-items: center; justify-content: center; z-index: 50; padding: 24px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #0a2d3f; border: 1px solid var(--border); border-radius: 20px;
+    padding: 36px; max-width: 520px; width: 100%;
+    max-height: 90vh; overflow-y: auto;
+  }
+
+  /* ── ToS List ── */
+  .tos-list { list-style: none; padding: 0; margin: 0; }
+  .tos-list li {
+    display: flex; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 14px;
+    color: rgba(255,255,255,0.85); line-height: 1.5;
+  }
+  .tos-list li:last-child { border-bottom: none; }
+  .tos-icon { color: var(--teal); flex-shrink: 0; margin-top: 2px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    .card { padding: 24px 20px; }
+    .btn { padding: 13px 24px; font-size: 14px; }
+    .top-bar { padding: 14px 20px; }
+    .logo { height: 36px; }
+    .qr-block { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ VIEW: LOGIN ════════════════ -->
+<div id="view-login" class="view center" style="padding:24px">
+  <div class="card" style="max-width:420px;width:100%;text-align:center">
+    <img src="/branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png" alt="Blueprint Summit"
+      style="height:64px;margin-bottom:32px;display:block;margin-left:auto;margin-right:auto"
+      onerror="this.style.display='none'">
+    <p class="label" style="margin-bottom:8px">Mentor Influence</p>
+    <h1 class="font-heading" style="font-size:22px;margin-bottom:8px">Mirror</h1>
+    <p class="text-muted" style="font-size:14px;margin-bottom:32px;line-height:1.6">Zugang mit deinem Event-Passwort</p>
+    <input type="password" class="input" id="login-password" placeholder="Passwort eingeben" style="margin-bottom:16px" autocomplete="off">
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Einloggen</button>
+  </div>
+</div>
+
+<!-- ════════════════ VIEW: LOBBY ════════════════ -->
+<div id="view-lobby" class="view" style="flex-direction:column">
+  <div class="top-bar">
+    <img src="/branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png" alt="Blueprint Summit" class="logo" onerror="this.style.display='none'">
+    <p class="label">Mirror of Influence</p>
+  </div>
+  <div class="container" style="padding-top:40px;padding-bottom:60px;flex:1">
+
+    <!-- Mentor Section -->
+    <div style="margin-bottom:48px">
+      <p class="label" style="margin-bottom:10px">Du bist Mentor?</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+        <h1 class="font-heading" style="font-size:28px">Neue Session starten</h1>
+        <button class="btn btn-primary" onclick="openTosModal()" style="gap:8px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Session erstellen
+        </button>
+      </div>
+    </div>
+
+    <!-- Mentee Section -->
+    <div>
+      <p class="label" style="margin-bottom:16px">Aktive Sessions — als Mentee beitreten</p>
+      <div id="sessions-list">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════ MODAL: TERMS OF SERVICE ════════════════ -->
+<div class="modal-overlay" id="tos-modal">
+  <div class="modal">
+    <p class="label" style="margin-bottom:6px;color:var(--teal)">Vor dem Start</p>
+    <h2 class="font-heading" style="font-size:20px;margin-bottom:6px">Nutzungsbedingungen</h2>
+    <p class="text-muted" style="font-size:13px;margin-bottom:24px;line-height:1.6">
+      Bitte lies und akzeptiere die folgenden Regeln, bevor du eine Feedback-Session öffnest.
+    </p>
+    <ul class="tos-list">
+      <li>
+        <span class="tos-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </span>
+        <span><strong>Vertraulichkeit:</strong> Alle Inhalte dieser Session bleiben innerhalb der Gruppe. Ergebnisse werden nicht ohne Zustimmung des Mentors weitergegeben.</span>
+      </li>
+      <li>
+        <span class="tos-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </span>
+        <span><strong>Vollständige Anonymität:</strong> Antworten werden ohne Namensnennung erfasst. Es ist technisch nicht möglich, eine Antwort einer bestimmten Person zuzuordnen.</span>
+      </li>
+      <li>
+        <span class="tos-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </span>
+        <span><strong>Ehrlichkeit:</strong> Dieses Tool lebt von aufrichtigem Feedback. Politisch korrekte oder beschönigte Antworten helfen niemandem weiter.</span>
+      </li>
+      <li>
+        <span class="tos-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </span>
+        <span><strong>Respektvoller Umgang:</strong> Die Ergebnisse dienen ausschließlich der persönlichen Entwicklung des Mentors — nicht der Kritik oder Bewertung als Person.</span>
+      </li>
+      <li>
+        <span class="tos-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>
+        </span>
+        <span><strong>Keine Screenshots der Rohdaten:</strong> Der Fragebogen und individuelle Antworten dürfen nicht fotografiert oder gespeichert werden.</span>
+      </li>
+      <li>
+        <span class="tos-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </span>
+        <span><strong>Freiwilligkeit:</strong> Die Teilnahme am Feedback ist freiwillig. Niemand darf zu einer bestimmten Bewertung gedrängt werden.</span>
+      </li>
+    </ul>
+    <div style="display:flex;gap:12px;margin-top:28px">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('tos-modal')">Abbrechen</button>
+      <button class="btn btn-primary" style="flex:2" onclick="acceptTos()">Akzeptieren & weiter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ MODAL: MENTOR SETUP ════════════════ -->
+<div class="modal-overlay" id="mentor-setup-modal">
+  <div class="modal">
+    <p class="label" style="margin-bottom:6px">Session erstellen</p>
+    <h2 class="font-heading" style="font-size:20px;margin-bottom:24px">Deine Session</h2>
+    <div style="margin-bottom:16px">
+      <p class="label" style="margin-bottom:8px">Dein Name (Mentor)</p>
+      <input type="text" class="input" id="mentor-name-input" placeholder="z.B. Max Mustermann" autocomplete="off">
+    </div>
+    <div style="margin-bottom:28px">
+      <p class="label" style="margin-bottom:8px">Erwartete Anzahl Mentees</p>
+      <input type="number" class="input" id="mentee-count-input" placeholder="z.B. 8" min="1" max="50" autocomplete="off">
+    </div>
+    <div style="display:flex;gap:12px">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('mentor-setup-modal')">Abbrechen</button>
+      <button class="btn btn-primary" style="flex:2" onclick="createSession()">Session starten</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ VIEW: MENTOR WAITING ════════════════ -->
+<div id="view-mentor-waiting" class="view" style="flex-direction:column">
+  <div class="top-bar">
+    <img src="/branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png" alt="Blueprint Summit" class="logo" onerror="this.style.display='none'">
+    <span class="label">Session aktiv</span>
+  </div>
+  <div class="container" style="flex:1;padding-top:48px;padding-bottom:60px;max-width:640px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="width:64px;height:64px;background:rgba(0,233,185,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E9B9" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <h2 class="font-heading" style="font-size:22px;margin-bottom:10px">Bitte verlasse den Raum</h2>
+      <p class="text-muted" style="font-size:14px;line-height:1.7">
+        Deine Mentees füllen jetzt das Feedback aus.<br>
+        Du erhältst deine Auswertung sobald alle abgegeben haben.
+      </p>
+    </div>
+
+    <!-- QR Code & Link -->
+    <div class="qr-block">
+      <div class="qr-img-wrap">
+        <img id="mentor-qr-img" src="" alt="QR Code" style="width:180px;height:180px;display:block">
+      </div>
+      <div style="flex:1;min-width:200px">
+        <p class="label" style="margin-bottom:10px">Mentees scannen oder öffnen:</p>
+        <div class="session-code-badge" id="mentor-session-code">––––––</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Session-Code</p>
+        <a id="mentor-join-link" href="#" class="qr-link" target="_blank">–</a>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span class="label">Eingegangene Rückmeldungen</span>
+        <span class="font-heading text-teal" style="font-size:20px" id="mentor-counter">0/–</span>
+      </div>
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" id="mentor-progress-bar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <button class="btn btn-danger" style="width:100%" onclick="endSession()">Sitzung jetzt beenden</button>
+  </div>
+</div>
+
+<!-- ════════════════ VIEW: MENTOR COMPLETE ════════════════ -->
+<div id="view-mentor-complete" class="view center" style="padding:24px">
+  <div class="card" style="max-width:480px;width:100%;text-align:center">
+    <div style="width:64px;height:64px;background:rgba(0,233,185,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E9B9" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <p class="label" style="margin-bottom:8px">Alle Rückmeldungen eingegangen</p>
+    <h2 class="font-heading" style="font-size:22px;margin-bottom:8px">Auswertung bereit</h2>
+    <p class="text-muted" style="font-size:14px;line-height:1.6;margin-bottom:32px">
+      <span id="complete-count">–</span> Mentees haben ihr Feedback abgegeben.<br>
+      Lade jetzt dein PDF herunter.
+    </p>
+    <button class="btn btn-primary" style="width:100%;margin-bottom:12px" id="pdf-download-btn" onclick="downloadPDF()">
+      PDF herunterladen
+    </button>
+    <button class="btn btn-outline" style="width:100%;display:none" id="new-session-btn" onclick="resetSession()">
+      Zurück zur Lobby
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════ VIEW: MENTEE INTRO ════════════════ -->
+<div id="view-mentee-intro" class="view" style="flex-direction:column">
+  <div class="top-bar">
+    <img src="/branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png" alt="Blueprint Summit" class="logo" onerror="this.style.display='none'">
+    <span class="label">Mirror of Influence</span>
+  </div>
+  <div class="container" style="padding-top:40px;padding-bottom:60px;max-width:680px">
+    <p class="label text-teal" style="margin-bottom:10px">Vertraulich & Anonym</p>
+    <h1 class="font-heading" style="font-size:28px;margin-bottom:32px;line-height:1.2">Mirror of<br><span class="text-teal">Influence</span></h1>
+    <div class="card" style="margin-bottom:28px">
+      <p style="font-size:15px;line-height:1.8;color:rgba(255,255,255,0.85)">
+        Dieses Tool dient dazu, dem Mentor ein möglichst ehrliches Spiegelbild seiner Wirkung und seines Einflusses zu geben.
+        Nur durch offenes und unverfälschtes Feedback kann sichtbar werden, in welchen Bereichen der Mentor bereits Autorität
+        und Glaubwürdigkeit besitzt – und in welchen Bereichen sein Einfluss begrenzt ist.
+      </p>
+      <p style="font-size:15px;line-height:1.8;color:rgba(255,255,255,0.85);margin-top:16px">
+        Ein Beispiel: Wenn ein Mentor selbst wenig auf seine Gesundheit oder Fitness achtet, würdest du wahrscheinlich keinen
+        Rat von ihm zu Themen wie körperlicher Leistungsfähigkeit oder Energie im Alltag annehmen. Genau solche ehrlichen
+        Einschätzungen sind für dieses Tool entscheidend, denn sie zeigen dem Mentor klar, in welchen Bereichen seine Wirkung
+        stark ist – und wo Entwicklung notwendig ist.
+      </p>
+      <p style="font-size:15px;line-height:1.8;color:rgba(255,255,255,0.85);margin-top:16px">
+        Man kann dieses Tool mit einem routinemäßigen Gesundheitscheck vergleichen. Wenn man ein Blutbild machen lässt und
+        plötzlich zeigen die Werte, dass etwas nicht in Ordnung ist, kann das zunächst unangenehm sein – gleichzeitig ist es
+        genau diese ehrliche Diagnose, die dabei hilft, rechtzeitig etwas zu verändern und langfristig gesünder zu werden.
+      </p>
+      <p style="font-size:15px;line-height:1.8;color:rgba(255,255,255,0.85);margin-top:16px">
+        Bitte beantworte die Fragen daher so ehrlich wie möglich. Ziel dieses Tools ist nicht eine höfliche Bewertung,
+        sondern ein realistisches Bild der tatsächlichen Wahrnehmung. Je ehrlicher die Antworten sind, desto besser kann
+        der Mentor verstehen, wo er seine Fähigkeiten, seine Wirkung und seinen Einfluss weiterentwickeln kann.
+      </p>
+      <p style="font-size:15px;line-height:1.8;color:rgba(255,255,255,0.85);margin-top:16px">
+        Die Bewertung soll unabhängig von der Rolle im Unternehmen erfolgen. Entscheidend ist nicht die Position der Person,
+        sondern in welchen Bereichen du dich tatsächlich von ihr beeinflussen oder inspirieren lassen würdest.
+      </p>
+    </div>
+    <div style="background:rgba(0,233,185,0.08);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:28px;display:flex;align-items:center;gap:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E9B9" stroke-width="2" style="flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <p style="font-size:13px;color:var(--muted)">Alle Antworten werden zu 100% anonymisiert erfasst. Es ist nicht möglich nachzuvollziehen, von welcher Person eine Antwort stammt.</p>
+    </div>
+    <button class="btn btn-primary" style="width:100%;font-size:16px;padding:18px" onclick="showView('view-mentee-survey')">
+      Bewertung starten
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════ VIEW: MENTEE SURVEY ════════════════ -->
+<div id="view-mentee-survey" class="view" style="flex-direction:column">
+  <div class="top-bar">
+    <img src="/branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png" alt="Blueprint Summit" class="logo" onerror="this.style.display='none'">
+    <span class="label">Anonym · Bewertung</span>
+  </div>
+  <div class="container" style="padding-top:32px;padding-bottom:80px;max-width:720px">
+    <div style="margin-bottom:32px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="label">Bewertung für <span class="text-teal" id="survey-mentor-name">–</span></p>
+        <p class="text-muted" style="font-size:12px">Skala: 1 = überhaupt nicht · 5 = absolut</p>
+      </div>
+    </div>
+    <!-- Categories rendered by JS -->
+    <div id="survey-categories"></div>
+    <!-- Global Questions -->
+    <div class="category-section" style="border-color:rgba(92,225,230,0.25)">
+      <p class="label text-cyan" style="margin-bottom:6px">Abschlussfragen</p>
+      <h3 class="font-heading" style="font-size:16px;margin-bottom:20px">Der radikale Spiegel</h3>
+      <div class="question-block">
+        <p class="question-label"><strong>Die wichtigste Spiegel-Frage</strong><br>In welchem dieser Bereiche hat dieser Mentor aktuell den geringsten Einfluss auf dich?</p>
+        <textarea class="input" id="global-spiegel" placeholder="Offen antworten..." rows="3"></textarea>
+      </div>
+      <div class="question-block">
+        <p class="question-label"><strong>Die brutalste Abschlussfrage</strong><br>Wenn diese Person nicht dein Vorgesetzter wäre – in welchen Bereichen würdest du dich trotzdem freiwillig an ihr orientieren?</p>
+        <textarea class="input" id="global-abschluss" placeholder="Offen antworten..." rows="3"></textarea>
+      </div>
+      <div class="question-block">
+        <p class="question-label"><strong>Blinde Flecken des Mentors</strong><br>Welche Fähigkeit oder Eigenschaft müsste dieser Mentor aus deiner Sicht am dringendsten entwickeln, um mehr Einfluss auf dich zu haben?</p>
+        <textarea class="input" id="global-blindeFlecken" placeholder="Offen antworten..." rows="3"></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;font-size:16px;padding:18px;margin-top:24px" id="submit-btn" onclick="submitFeedback()">
+      Feedback abgeben
+    </button>
+    <p class="text-muted" style="text-align:center;font-size:12px;margin-top:12px">Deine Antworten sind vollständig anonym.</p>
+  </div>
+</div>
+
+<!-- ════════════════ VIEW: MENTEE THANKYOU ════════════════ -->
+<div id="view-mentee-thankyou" class="view center" style="padding:24px">
+  <div class="card" style="max-width:440px;width:100%;text-align:center">
+    <div style="width:64px;height:64px;background:rgba(92,225,230,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5CE1E6" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2 class="font-heading" style="font-size:20px;margin-bottom:12px">Danke für dein Feedback!</h2>
+    <p class="text-muted" style="font-size:14px;line-height:1.7">
+      Deine Antworten wurden anonym eingereicht.<br>
+      Der Mentor erhält seine Auswertung sobald alle Mentees fertig sind.
+    </p>
+  </div>
+</div>
+
+<!-- ════════════════ TOAST ════════════════ -->
+<div id="toast"></div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  {
+    name: 'Selbstführung',
+    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, sich selbst zu organisieren und ihr eigenes Leben zu führen. Dazu gehören Zeitmanagement, Priorisierung, Selbstdisziplin, Stressmanagement, Reflexionsfähigkeit und der Umgang mit persönlichen Herausforderungen.',
+    bedarf: 'Wenn du in diesem Bereich Orientierung suchst – würdest du dir grundsätzlich Rat von anderen Menschen holen?',
+    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person, die du dafür in Betracht ziehen würdest?',
+    vergleich: 'Verglichen mit einer Person, die du in diesem Bereich als Vorbild siehst – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen Situationen wirkt diese Person auf dich selbst unstrukturiert oder überfordert?'
+  },
+  {
+    name: 'Fachliche Autorität',
+    desc: 'Diese Kategorie beschreibt die fachliche Kompetenz und Expertise des Mentors. Dazu gehören Wissen, Erfahrung, Problemlösungskompetenz, Qualität der Arbeit und die Fähigkeit, komplexe fachliche Zusammenhänge zu verstehen und zu erklären.',
+    bedarf: 'Wenn du fachliche Orientierung suchst – würdest du dir grundsätzlich Rat von anderen Menschen holen?',
+    influence: 'Wenn du fachlichen Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
+    vergleich: 'Verglichen mit einer Person, die du fachlich als absolute Koryphäe siehst – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen fachlichen Bereichen würdest du diese Person nicht um Rat fragen?'
+  },
+  {
+    name: 'Auftreten & Wirkung',
+    desc: 'Diese Kategorie beschreibt die Wirkung einer Person auf andere Menschen. Dazu gehören Kommunikation, Körpersprache, Präsenz, Klarheit in Gesprächen, Überzeugungskraft und die Fähigkeit, Aufmerksamkeit und Vertrauen zu erzeugen.',
+    bedarf: 'Wenn du deine Wirkung oder Kommunikation verbessern möchtest – würdest du dir dafür grundsätzlich Rat von anderen Menschen holen?',
+    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
+    vergleich: 'Verglichen mit einer Person, deren Auftreten du sehr bewunderst – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen Situationen verliert diese Person aus deiner Sicht an Wirkung oder Präsenz?'
+  },
+  {
+    name: 'Soziale Kompetenz',
+    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, mit anderen Menschen gut umzugehen. Dazu gehören Empathie, Zuhören, Konfliktfähigkeit, respektvolle Kommunikation, Verständnis für unterschiedliche Perspektiven und ein konstruktiver Umgang mit Beziehungen.',
+    bedarf: 'Wenn du dich im Umgang mit Menschen weiterentwickeln möchtest – würdest du dir dafür Rat von anderen Menschen holen?',
+    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
+    vergleich: 'Verglichen mit einer Person, die du für besonders sozial kompetent hältst – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen Situationen wirkt diese Person für dich sozial unsicher oder wenig empathisch?'
+  },
+  {
+    name: 'Gesundheit & Energie',
+    desc: 'Diese Kategorie beschreibt den Umgang mit körperlicher und mentaler Energie. Dazu gehören Fitness, Ernährung, Schlaf, Belastbarkeit, Regeneration und die Fähigkeit, langfristig leistungsfähig zu bleiben.',
+    bedarf: 'Wenn du deine Gesundheit oder Leistungsfähigkeit verbessern möchtest – würdest du dir dafür Rat von anderen Menschen holen?',
+    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
+    vergleich: 'Verglichen mit einer Person, deren Lebensstil du als sehr gesund und leistungsfähig wahrnimmst – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen Bereichen wirkt der Lebensstil dieser Person für dich nicht überzeugend?'
+  },
+  {
+    name: 'Leadership & Verantwortung',
+    desc: 'Diese Kategorie beschreibt die Fähigkeit einer Person, Verantwortung zu übernehmen und andere zu führen. Dazu gehören Entscheidungsfähigkeit, Klarheit, Konsequenz, Umgang mit Konflikten, Verantwortung für Ergebnisse und die Fähigkeit, Orientierung zu geben.',
+    bedarf: 'Wenn du dich im Bereich Führung oder Verantwortung weiterentwickeln möchtest – würdest du dir dafür Rat von anderen Menschen holen?',
+    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
+    vergleich: 'Verglichen mit einer Person, die du als starke Führungspersönlichkeit wahrnimmst – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen Situationen wirkt diese Person für dich nicht wie eine echte Führungspersönlichkeit?'
+  },
+  {
+    name: 'Finanzielle Kompetenz',
+    desc: 'Diese Kategorie beschreibt den Umgang mit Geld und wirtschaftlichen Entscheidungen. Dazu gehören finanzielle Planung, Vermögensaufbau, wirtschaftliches Denken, langfristige Entscheidungen und Verantwortung im Umgang mit Ressourcen.',
+    bedarf: 'Wenn du finanzielle Entscheidungen treffen musst – würdest du dir dafür Rat von anderen Menschen holen?',
+    influence: 'Wenn du in diesem Bereich Rat suchen würdest – wäre dieser Mentor eine Person dafür?',
+    vergleich: 'Verglichen mit einer Person, die du finanziell sehr kompetent findest – wie nah kommt dieser Mentor daran?',
+    reflexion: 'In welchen finanziellen Themen würdest du dieser Person keinen Rat zutrauen?'
+  }
+]
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let socket = null
+let currentSessionCode = null
+let currentRole = null // 'mentor' | 'mentee'
+let pendingJoinCode = null // from ?join=CODE URL param
+
+// ── URL Parameter ─────────────────────────────────────────────────────────────
+
+;(function checkUrlJoin() {
+  const params = new URLSearchParams(window.location.search)
+  const join = params.get('join')
+  if (join) pendingJoinCode = join.toUpperCase()
+})()
+
+// ── Socket Init ───────────────────────────────────────────────────────────────
+
+function initSocket() {
+  socket = io()
+
+  socket.on('sessions-state', (sessionsData) => {
+    renderSessions(sessionsData)
+  })
+
+  socket.on('session-created', ({ session, code }) => {
+    currentSessionCode = code
+    currentRole = 'mentor'
+    // Set QR code & link
+    const joinUrl = window.location.origin + '/?join=' + code
+    document.getElementById('mentor-session-code').textContent = code
+    document.getElementById('mentor-join-link').textContent = joinUrl
+    document.getElementById('mentor-join-link').href = joinUrl
+    document.getElementById('mentor-qr-img').src =
+      'https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=072330&bgcolor=ffffff&data=' +
+      encodeURIComponent(joinUrl)
+    updateMentorCounter(0, session.expectedMentees)
+    closeModal('mentor-setup-modal')
+    showView('view-mentor-waiting')
+  })
+
+  socket.on('session-joined', ({ session }) => {
+    currentSessionCode = session.code
+    currentRole = 'mentee'
+    document.getElementById('survey-mentor-name').textContent = session.mentorName
+    buildSurvey()
+    showView('view-mentee-intro')
+    // Clean URL
+    if (window.history.replaceState) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  })
+
+  socket.on('submission-update', ({ submitted, expected }) => {
+    if (currentRole === 'mentor') {
+      updateMentorCounter(submitted, expected)
+    }
+  })
+
+  socket.on('session-complete', ({ submitted }) => {
+    if (currentRole === 'mentor') {
+      document.getElementById('complete-count').textContent = submitted
+      showView('view-mentor-complete')
+    }
+  })
+
+  socket.on('feedback-accepted', () => {
+    showView('view-mentee-thankyou')
+  })
+
+  socket.on('error-msg', (msg) => {
+    showToast(msg)
+    closeModal('mentor-setup-modal')
+  })
+
+  // Auto-join from URL after socket connects
+  if (pendingJoinCode) {
+    socket.emit('join-session', { sessionCode: pendingJoinCode })
+    pendingJoinCode = null
+  }
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+
+async function doLogin() {
+  const pw = document.getElementById('login-password').value.trim()
+  if (!pw) return
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    })
+    if (res.ok) {
+      initSocket()
+      if (!pendingJoinCode) showView('view-lobby')
+      // If pendingJoinCode set, session-joined event will handle navigation
+    } else {
+      showToast('Falsches Passwort')
+    }
+  } catch {
+    showToast('Verbindungsfehler')
+  }
+}
+
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin()
+})
+
+// ── Sessions Lobby ────────────────────────────────────────────────────────────
+
+function renderSessions(sessionsData) {
+  const list = document.getElementById('sessions-list')
+  const active = sessionsData.filter(s => s.status === 'active')
+
+  if (active.length === 0) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:48px 24px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:14px">
+        <p class="text-muted" style="font-size:15px">Keine aktiven Sessions vorhanden.</p>
+        <p class="text-muted" style="font-size:13px;margin-top:8px">Der Mentor startet zuerst eine Session.</p>
+      </div>`
+    return
+  }
+
+  list.innerHTML = active.map(s => {
+    const pct = s.expectedMentees ? Math.round(s.submittedCount / s.expectedMentees * 100) : 0
+    return `<div class="session-card" onclick="joinSession('${s.code}')">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="pulse-dot"></span>
+          <span class="font-heading" style="font-size:18px;letter-spacing:3px;color:var(--teal)">${s.code}</span>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px">${s.mentorName}</div>
+        <div style="font-size:12px;color:var(--muted)">${s.submittedCount}/${s.expectedMentees} Rückmeldungen abgegeben</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:13px;color:var(--cyan)">Beitreten →</span>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// ── ToS ───────────────────────────────────────────────────────────────────────
+
+function openTosModal() {
+  openModal('tos-modal')
+}
+
+function acceptTos() {
+  closeModal('tos-modal')
+  document.getElementById('mentor-name-input').value = ''
+  document.getElementById('mentee-count-input').value = ''
+  openModal('mentor-setup-modal')
+  setTimeout(() => document.getElementById('mentor-name-input').focus(), 100)
+}
+
+// ── Session Create ─────────────────────────────────────────────────────────────
+
+function createSession() {
+  const name = document.getElementById('mentor-name-input').value.trim()
+  const count = parseInt(document.getElementById('mentee-count-input').value)
+  if (!name) { showToast('Bitte gib deinen Namen ein.'); return }
+  if (!count || count < 1) { showToast('Bitte gib eine gültige Anzahl ein.'); return }
+  socket.emit('create-session', { mentorName: name, expectedMentees: count })
+}
+
+// ── Mentee Join ───────────────────────────────────────────────────────────────
+
+function joinSession(sessionCode) {
+  socket.emit('join-session', { sessionCode })
+}
+
+// ── Mentor Waiting ────────────────────────────────────────────────────────────
+
+function updateMentorCounter(submitted, expected) {
+  document.getElementById('mentor-counter').textContent = `${submitted}/${expected}`
+  const pct = expected > 0 ? Math.min(100, Math.round(submitted / expected * 100)) : 0
+  document.getElementById('mentor-progress-bar').style.width = pct + '%'
+}
+
+function endSession() {
+  if (confirm('Sitzung jetzt beenden? Nicht alle Mentees haben abgegeben.')) {
+    socket.emit('end-session', { sessionCode: currentSessionCode })
+  }
+}
+
+// ── PDF ───────────────────────────────────────────────────────────────────────
+
+async function downloadPDF() {
+  const btn = document.getElementById('pdf-download-btn')
+  btn.disabled = true
+  btn.textContent = 'PDF wird erstellt…'
+  try {
+    const res = await fetch('/api/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionCode: currentSessionCode })
+    })
+    if (!res.ok) throw new Error('Fehler')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Mirror_Auswertung.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+    document.getElementById('new-session-btn').style.display = 'block'
+  } catch {
+    showToast('PDF-Erstellung fehlgeschlagen. Bitte erneut versuchen.')
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'PDF herunterladen'
+  }
+}
+
+function resetSession() {
+  socket.emit('reset-session', { sessionCode: currentSessionCode })
+  currentSessionCode = null
+  currentRole = null
+  document.getElementById('new-session-btn').style.display = 'none'
+  showView('view-lobby')
+}
+
+// ── Survey Build ──────────────────────────────────────────────────────────────
+
+function buildSurvey() {
+  const container = document.getElementById('survey-categories')
+  container.innerHTML = CATEGORIES.map((cat, idx) => `
+    <div class="category-section" id="cat-section-${idx}">
+      <p class="label text-teal" style="margin-bottom:4px">Kategorie ${idx + 1} von ${CATEGORIES.length}</p>
+      <h3 class="font-heading" style="font-size:17px;margin-bottom:10px">${cat.name}</h3>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px">${cat.desc}</p>
+
+      <div class="question-block">
+        <p class="question-label"><strong>Bedarf</strong><br>${cat.bedarf}</p>
+        ${buildRatingButtons(idx, 'bedarf')}
+      </div>
+      <div class="question-block">
+        <p class="question-label"><strong>Mentor Influence</strong><br>${cat.influence}</p>
+        ${buildRatingButtons(idx, 'influence')}
+      </div>
+      <div class="question-block">
+        <p class="question-label"><strong>Vergleich mit Idealperson</strong><br>${cat.vergleich}</p>
+        ${buildRatingButtons(idx, 'vergleich')}
+      </div>
+      <div class="question-block">
+        <p class="question-label"><strong>Reflexion</strong><br>${cat.reflexion}</p>
+        <textarea class="input" id="reflexion-${idx}" placeholder="Deine Antwort (optional)..." rows="2"></textarea>
+      </div>
+    </div>
+  `).join('')
+}
+
+function buildRatingButtons(catIdx, type) {
+  const btns = [1,2,3,4,5].map(v =>
+    `<button class="rating-btn" data-cat="${catIdx}" data-type="${type}" data-value="${v}" onclick="selectRating(this)">${v}</button>`
+  ).join('')
+  return `<div class="rating-group" id="rating-${catIdx}-${type}">${btns}</div>
+  <div class="rating-scale"><span>überhaupt nicht</span><span>absolut</span></div>`
+}
+
+function selectRating(btn) {
+  const catIdx = btn.dataset.cat
+  const type = btn.dataset.type
+  document.querySelectorAll(`[data-cat="${catIdx}"][data-type="${type}"]`)
+    .forEach(b => b.classList.remove('selected'))
+  btn.classList.add('selected')
+}
+
+// ── Submit Feedback ───────────────────────────────────────────────────────────
+
+function submitFeedback() {
+  const categories = CATEGORIES.map((_, idx) => {
+    const getVal = (type) => {
+      const sel = document.querySelector(`[data-cat="${idx}"][data-type="${type}"].selected`)
+      return sel ? parseInt(sel.dataset.value) : null
+    }
+    return {
+      bedarf: getVal('bedarf'),
+      influence: getVal('influence'),
+      vergleich: getVal('vergleich'),
+      reflexion: document.getElementById(`reflexion-${idx}`)?.value.trim() || ''
+    }
+  })
+
+  for (let i = 0; i < categories.length; i++) {
+    const c = categories[i]
+    if (!c.bedarf || !c.influence || !c.vergleich) {
+      showToast(`Bitte alle Bewertungen in "${CATEGORIES[i].name}" ausfüllen.`)
+      document.getElementById(`cat-section-${i}`).scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+  }
+
+  const global = {
+    spiegel: document.getElementById('global-spiegel').value.trim(),
+    abschluss: document.getElementById('global-abschluss').value.trim(),
+    blindeFlecken: document.getElementById('global-blindeFlecken').value.trim()
+  }
+
+  document.getElementById('submit-btn').disabled = true
+  document.getElementById('submit-btn').textContent = 'Wird übermittelt…'
+
+  socket.emit('submit-feedback', {
+    sessionCode: currentSessionCode,
+    answers: { categories, global }
+  })
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'))
+  document.getElementById(id).classList.add('active')
+  window.scrollTo(0, 0)
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open') }
+function closeModal(id) { document.getElementById(id).classList.remove('open') }
+
+function showToast(msg) {
+  const t = document.getElementById('toast')
+  t.textContent = msg
+  t.style.display = 'block'
+  setTimeout(() => { t.style.display = 'none' }, 3500)
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+showView('view-login')
+</script>
+</body>
+</html>
