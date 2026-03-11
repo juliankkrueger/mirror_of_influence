@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mirror of Influence — Blueprint Summit</title>
+<link rel="icon" type="image/png" href="/branding_assets/brand_guide/Logos/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&family=Noto+Sans+Display:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
 <style>
@@ -198,6 +199,27 @@
   .tos-list li:last-child { border-bottom: none; }
   .tos-icon { color: var(--teal); flex-shrink: 0; margin-top: 2px; }
 
+  /* ── Login Logo ── */
+  .login-logo {
+    max-width: 280px; width: 100%; height: auto;
+    margin-bottom: 32px; display: block;
+    margin-left: auto; margin-right: auto;
+  }
+
+  /* ── Safari backdrop-filter prefix ── */
+  .card {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+  .modal-overlay {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  #toast {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
   /* ── Responsive ── */
   @media (max-width: 600px) {
     .card { padding: 24px 20px; }
@@ -205,6 +227,31 @@
     .top-bar { padding: 14px 20px; }
     .logo { height: 36px; }
     .qr-block { flex-direction: column; }
+    .sessions-list { gap: 10px; }
+    .session-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+  }
+
+  @media (max-width: 480px) {
+    /* Rating buttons smaller on very small screens */
+    .rating-btn { min-width: 36px; width: 36px; height: 44px; font-size: 0.85rem; }
+    /* Reduce padding on cards */
+    .card { padding: 1rem; }
+    /* Login logo */
+    .login-logo { max-width: 200px; }
+    /* Modal scrollable */
+    .modal-content { max-height: 90vh; overflow-y: auto; }
+    /* Ensure modal itself is scrollable */
+    .modal { max-height: 90vh; overflow-y: auto; padding: 24px 20px; }
+    /* Survey container padding */
+    .container { padding-left: 16px; padding-right: 16px; }
+    /* Rating group: allow graceful wrap but prefer single line */
+    .rating-group { gap: 6px; flex-wrap: nowrap; }
+    /* Category section padding */
+    .category-section { padding: 20px 16px; }
+    /* Top bar compact */
+    .top-bar { padding: 12px 16px; }
+    /* QR block stacked */
+    .qr-block { padding: 16px; gap: 16px; }
   }
 </style>
 </head>
@@ -214,10 +261,9 @@
 <div id="view-login" class="view center" style="padding:24px">
   <div class="card" style="max-width:420px;width:100%;text-align:center">
     <img src="/branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png" alt="Blueprint Summit"
-      style="height:64px;margin-bottom:32px;display:block;margin-left:auto;margin-right:auto"
+      class="login-logo"
       onerror="this.style.display='none'">
-    <p class="label" style="margin-bottom:8px">Mentor Influence</p>
-    <h1 class="font-heading" style="font-size:22px;margin-bottom:8px">Mirror</h1>
+    <h1 class="font-heading" style="font-size:24px;margin-bottom:8px">Mirror of Influence</h1>
     <p class="text-muted" style="font-size:14px;margin-bottom:32px;line-height:1.6">Zugang mit deinem Event-Passwort</p>
     <input type="password" class="input" id="login-password" placeholder="Passwort eingeben" style="margin-bottom:16px" autocomplete="off">
     <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Einloggen</button>
@@ -634,6 +680,14 @@ function initSocket() {
   socket.on('error-msg', (msg) => {
     showToast(msg)
     closeModal('mentor-setup-modal')
+  })
+
+  socket.on('disconnect', () => {
+    showToast('Verbindung unterbrochen – wird neu verbunden…')
+  })
+
+  socket.on('reconnect', () => {
+    showToast('Verbindung wiederhergestellt.')
   })
 
   // Auto-join from URL after socket connects
