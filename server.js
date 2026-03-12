@@ -170,6 +170,16 @@ const CATEGORY_NAMES = [
   'Finanzielle Kompetenz'
 ]
 
+const CATEGORY_REFLEXION_QUESTIONS = [
+  'In welchen Situationen wirkt diese Person für dich selbst unstrukturiert oder überfordert?',
+  'In welchen fachlichen Bereichen würdest du diese Person nicht um Rat fragen?',
+  'In welchen Situationen verliert diese Person aus deiner Sicht an Wirkung oder Präsenz?',
+  'In welchen Situationen wirkt diese Person für dich sozial unsicher oder wenig empathisch?',
+  'In welchen Bereichen wirkt der Lebensstil dieser Person für dich nicht überzeugend?',
+  'In welchen Situationen wirkt diese Person für dich nicht wie eine echte Führungspersönlichkeit?',
+  'In welchen finanziellen Themen würdest du dieser Person keinen Rat zutrauen?'
+]
+
 function generatePDFHtml(session, logoBase64) {
   const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : '–'
   const dist = arr => {
@@ -184,6 +194,12 @@ function generatePDFHtml(session, logoBase64) {
     const aktuelleWirkungVals = session.submissions.map(s => s.categories?.[idx]?.aktuelleWirkung).filter(Number.isFinite)
     const vergleichVals = session.submissions.map(s => s.categories?.[idx]?.vergleich).filter(Number.isFinite)
     const reflexionen = session.submissions.map(s => s.categories?.[idx]?.reflexion).filter(t => t?.trim())
+    const eignungAvgNum = parseFloat(avg(eignungVals)) || 0
+    const aktuelleWirkungAvgNum = parseFloat(avg(aktuelleWirkungVals)) || 0
+    const vergleichAvgNum = parseFloat(avg(vergleichVals)) || 0
+    const mentorInfluenceAvg = (eignungVals.length || aktuelleWirkungVals.length || vergleichVals.length)
+      ? parseFloat(((eignungAvgNum + aktuelleWirkungAvgNum + vergleichAvgNum) / 3).toFixed(1))
+      : 0
     return {
       name,
       bedarf: { avg: avg(bedarfVals), dist: dist(bedarfVals) },
@@ -191,13 +207,15 @@ function generatePDFHtml(session, logoBase64) {
       aktuelleWirkung: { avg: avg(aktuelleWirkungVals), dist: dist(aktuelleWirkungVals) },
       vergleich: { avg: avg(vergleichVals), dist: dist(vergleichVals) },
       reflexionen,
-      aktuelleWirkungAvgNum: parseFloat(avg(aktuelleWirkungVals)) || 0
+      aktuelleWirkungAvgNum,
+      mentorInfluenceAvg
     }
   })
 
   const globalAnswers = {
     spiegel: session.submissions.map(s => s.global?.spiegel).filter(t => t?.trim()),
-    potenzial: session.submissions.map(s => s.global?.potenzial).filter(t => t?.trim())
+    potenzial: session.submissions.map(s => s.global?.potenzial).filter(t => t?.trim()),
+    wunsch: session.submissions.map(s => s.global?.wunsch).filter(t => t?.trim())
   }
 
   const distBar = (d, total) => [1, 2, 3, 4, 5].map(v => {
@@ -216,7 +234,7 @@ function generatePDFHtml(session, logoBase64) {
     ? answers.map(a => `<p style="color:#e0e0e0;font-size:11px;padding:6px 10px;background:rgba(0,0,0,0.3);border-left:2px solid #5CE1E6;border-radius:3px;margin:4px 0;line-height:1.5">"${a}"</p>`).join('')
     : '<p style="color:rgba(255,255,255,0.3);font-size:11px;font-style:italic">Keine Antworten.</p>'
 
-  const catSections = catStats.map(cat => `
+  const catSections = catStats.map((cat, idx) => `
     <div style="margin-bottom:24px;background:rgba(255,255,255,0.04);border:1px solid rgba(0,233,185,0.25);border-radius:10px;padding:18px;page-break-inside:avoid">
       <h3 style="color:#00E9B9;font-family:Unbounded,sans-serif;font-size:12px;letter-spacing:1px;margin:0 0 14px 0;text-transform:uppercase">${cat.name}</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px">
@@ -240,21 +258,23 @@ function generatePDFHtml(session, logoBase64) {
       ${cat.reflexionen.length > 0 ? `
       <div>
         <p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:1px;margin:0 0 6px 0">REFLEXION — ANONYME ANTWORTEN</p>
+        <p style="color:rgba(255,255,255,0.45);font-size:10px;font-style:italic;margin:0 0 8px 0">${CATEGORY_REFLEXION_QUESTIONS[idx]}</p>
         ${answerBlock(cat.reflexionen)}
       </div>` : ''}
     </div>`).join('')
 
-  const globalSection = (title, answers) => `
+  const globalSection = (label, questionText, answers) => `
     <div style="margin-bottom:18px">
-      <p style="color:#5CE1E6;font-size:10px;letter-spacing:1px;margin:0 0 8px 0;text-transform:uppercase">${title}</p>
+      <p style="color:#5CE1E6;font-size:10px;letter-spacing:1px;margin:0 0 4px 0;text-transform:uppercase">${label}</p>
+      <p style="color:rgba(255,255,255,0.45);font-size:10px;font-style:italic;margin:0 0 8px 0">${questionText}</p>
       ${answerBlock(answers)}
     </div>`
 
   const radarData = JSON.stringify({
     labels: CATEGORY_NAMES.map(n => n.length > 14 ? n.substring(0, 12) + '…' : n),
     datasets: [{
-      label: 'Aktuelle Wirkung (Ø)',
-      data: catStats.map(c => c.aktuelleWirkungAvgNum),
+      label: 'Mentor-Einfluss (Ø)',
+      data: catStats.map(c => c.mentorInfluenceAvg),
       backgroundColor: 'rgba(0,233,185,0.15)',
       borderColor: '#00E9B9',
       borderWidth: 2,
@@ -295,8 +315,9 @@ ${catSections}
 
 <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(92,225,230,0.3);border-radius:10px;padding:20px;margin-top:8px;page-break-inside:avoid">
   <h2 style="font-family:Unbounded,sans-serif;font-size:12px;color:#5CE1E6;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px">Offene Abschlussfragen</h2>
-  ${globalSection('In welchem dieser Bereiche hat dieser Mentor aktuell den geringsten Einfluss auf dich?', globalAnswers.spiegel)}
-  ${globalSection('In welchem Bereich hätte dieser Mentor aus deiner Sicht das größte Potenzial, seinen Einfluss zu verbessern?', globalAnswers.potenzial)}
+  ${globalSection('Geringster Einfluss', 'In welchem dieser Bereiche hat dieser Mentor aktuell den geringsten Einfluss auf dich?', globalAnswers.spiegel)}
+  ${globalSection('Größtes Potenzial', 'In welchem Bereich hätte dieser Mentor aus deiner Sicht das größte Potenzial, seinen Einfluss zu verbessern?', globalAnswers.potenzial)}
+  ${globalSection('Dein persönlicher Wunsch', 'In welchem Bereich würdest du dir für ihn persönlich die größte Weiterentwicklung wünschen?', globalAnswers.wunsch)}
 </div>
 
 <script>
