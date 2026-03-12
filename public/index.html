@@ -618,6 +618,7 @@ let socket = null
 let currentSessionCode = null
 let currentRole = null // 'mentor' | 'mentee'
 let pendingJoinCode = null // from ?join=CODE URL param
+let sessionToken = null
 
 // ── URL Parameter ─────────────────────────────────────────────────────────────
 
@@ -713,6 +714,8 @@ async function doLogin() {
       body: JSON.stringify({ password: pw })
     })
     if (res.ok) {
+      const data = await res.json()
+      sessionToken = data.token
       initSocket()
       if (!pendingJoinCode) showView('view-lobby')
       // If pendingJoinCode set, session-joined event will handle navigation
@@ -782,7 +785,7 @@ function createSession() {
   const count = parseInt(document.getElementById('mentee-count-input').value)
   if (!name) { showToast('Bitte gib deinen Namen ein.'); return }
   if (!count || count < 1) { showToast('Bitte gib eine gültige Anzahl ein.'); return }
-  socket.emit('create-session', { mentorName: name, expectedMentees: count })
+  socket.emit('create-session', { mentorName: name, expectedMentees: count, token: sessionToken })
 }
 
 // ── Mentee Join ───────────────────────────────────────────────────────────────
@@ -801,7 +804,7 @@ function updateMentorCounter(submitted, expected) {
 
 function endSession() {
   if (confirm('Sitzung jetzt beenden? Nicht alle Mentees haben abgegeben.')) {
-    socket.emit('end-session', { sessionCode: currentSessionCode })
+    socket.emit('end-session', { sessionCode: currentSessionCode, token: sessionToken })
   }
 }
 
@@ -814,7 +817,7 @@ async function downloadPDF() {
   try {
     const res = await fetch('/api/pdf', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
       body: JSON.stringify({ sessionCode: currentSessionCode })
     })
     if (!res.ok) throw new Error('Fehler')
@@ -835,7 +838,7 @@ async function downloadPDF() {
 }
 
 function resetSession() {
-  socket.emit('reset-session', { sessionCode: currentSessionCode })
+  socket.emit('reset-session', { sessionCode: currentSessionCode, token: sessionToken })
   currentSessionCode = null
   currentRole = null
   document.getElementById('new-session-btn').style.display = 'none'

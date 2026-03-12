@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { readFileSync } from 'fs'
 import dotenv from 'dotenv'
+import crypto from 'crypto'
 
 dotenv.config()
 
@@ -27,6 +28,15 @@ function generateCode() {
 }
 
 const sessions = {} // keyed by session code
+const activeSessions = new Set()
+
+function requireAuth(req, res, next) {
+  const token = req.headers['x-session-token']
+  if (!token || !activeSessions.has(token)) {
+    return res.status(401).json({ error: 'Nicht authentifiziert' })
+  }
+  next()
+}
 
 const getSessionsPublic = () =>
   Object.values(sessions).map(s => ({
@@ -43,13 +53,15 @@ const getSessionsPublic = () =>
 app.post('/api/login', (req, res) => {
   const { password } = req.body
   if (password === process.env.APP_PASSWORD) {
-    res.json({ success: true })
+    const token = crypto.randomBytes(32).toString('hex')
+    activeSessions.add(token)
+    res.json({ success: true, token })
   } else {
     res.status(401).json({ error: 'Falsches Passwort' })
   }
 })
 
-app.post('/api/pdf', async (req, res) => {
+app.post('/api/pdf', requireAuth, async (req, res) => {
   try {
     const { sessionCode } = req.body
     const session = sessions[sessionCode]
@@ -92,7 +104,11 @@ app.post('/api/pdf', async (req, res) => {
 io.on('connection', (socket) => {
   socket.emit('sessions-state', getSessionsPublic())
 
-  socket.on('create-session', ({ mentorName, expectedMentees }) => {
+  socket.on('create-session', ({ mentorName, expectedMentees, token }) => {
+    if (!token || !activeSessions.has(token)) {
+      socket.emit('error-msg', 'Nicht authentifiziert.')
+      return
+    }
     let code
     do { code = generateCode() } while (sessions[code])
 
@@ -145,7 +161,8 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('end-session', ({ sessionCode }) => {
+  socket.on('end-session', ({ sessionCode, token }) => {
+    if (!token || !activeSessions.has(token)) return
     const session = sessions[sessionCode]
     if (!session) return
     session.status = 'complete'
@@ -156,7 +173,8 @@ io.on('connection', (socket) => {
     io.emit('sessions-state', getSessionsPublic())
   })
 
-  socket.on('reset-session', ({ sessionCode }) => {
+  socket.on('reset-session', ({ sessionCode, token }) => {
+    if (!token || !activeSessions.has(token)) return
     delete sessions[sessionCode]
     io.emit('sessions-state', getSessionsPublic())
   })
