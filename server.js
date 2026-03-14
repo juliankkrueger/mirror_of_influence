@@ -6,6 +6,7 @@ import { dirname, join } from 'path'
 import { readFileSync } from 'fs'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
+import rateLimit from 'express-rate-limit'
 
 dotenv.config()
 
@@ -16,9 +17,47 @@ const app = express()
 const httpServer = createServer(app)
 const io = new Server(httpServer)
 
+// ─── Shared Puppeteer Browser Pool ───────────────────────────────────────────
+// Ein Browser bleibt geöffnet, Pages werden geöffnet/geschlossen.
+// Verhindert crash bei gleichzeitigen PDF-Anfragen von 40+ Nutzern.
+let _browser = null
+let _pdfQueue = 0
+const PDF_CONCURRENCY = 3
+
+async function getBrowser() {
+  if (!_browser || !_browser.connected) {
+    const { default: puppeteer } = await import('puppeteer')
+    _browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    })
+    console.log('Puppeteer Browser gestartet ✓')
+    _browser.on('disconnected', () => { _browser = null })
+  }
+  return _browser
+}
+
 app.use(express.json({ limit: '10mb' }))
 app.use(express.static(join(__dirname, 'public')))
 app.use('/branding_assets', express.static(join(__dirname, 'branding_assets')))
+
+// ─── Rate Limiting ────────────────────────────────────────────────────────────
+// Limits für Event-Betrieb mit shared IP (Corporate WLAN / alle hinter einem Router)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Versuche. Bitte kurz warten.' }
+})
+
+const pdfLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 150,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele PDF-Anfragen. Bitte kurz warten.' }
+})
 
 // ─── Session State ────────────────────────────────────────────────────────────
 
@@ -50,7 +89,7 @@ const getSessionsPublic = () =>
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginLimiter, (req, res) => {
   const { password } = req.body
   if (password === process.env.APP_PASSWORD) {
     const token = crypto.randomBytes(32).toString('hex')
@@ -61,24 +100,28 @@ app.post('/api/login', (req, res) => {
   }
 })
 
-app.post('/api/pdf', requireAuth, async (req, res) => {
+app.post('/api/pdf', requireAuth, pdfLimiter, async (req, res) => {
+  const { sessionCode } = req.body
+  const session = sessions[sessionCode]
+  if (!session) return res.status(404).json({ error: 'Session nicht gefunden' })
+
+  // Concurrency-Schutz: max. 3 PDFs gleichzeitig
+  if (_pdfQueue >= PDF_CONCURRENCY) {
+    return res.status(503).json({ error: 'PDF-Erstellung kurz ausgelastet — bitte 10 Sekunden warten und erneut versuchen.' })
+  }
+  _pdfQueue++
+
+  let logoBase64 = ''
   try {
-    const { sessionCode } = req.body
-    const session = sessions[sessionCode]
-    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' })
+    const logoPath = join(__dirname, 'branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png')
+    logoBase64 = 'data:image/png;base64,' + readFileSync(logoPath).toString('base64')
+  } catch (e) { /* logo optional */ }
 
-    let logoBase64 = ''
-    try {
-      const logoPath = join(__dirname, 'branding_assets/brand_guide/Logos/blueprint_summit_logo_weiss.png')
-      logoBase64 = 'data:image/png;base64,' + readFileSync(logoPath).toString('base64')
-    } catch (e) { /* logo optional */ }
-
-    const { default: puppeteer } = await import('puppeteer')
-    const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    })
-    const page = await browser.newPage()
-    await page.setContent(generatePDFHtml(session, logoBase64), { waitUntil: 'networkidle0' })
+  let page
+  try {
+    const browser = await getBrowser()
+    page = await browser.newPage()
+    await page.setContent(generatePDFHtml(session, logoBase64), { waitUntil: 'domcontentloaded' })
     await page.waitForFunction(() => window.chartRendered === true, { timeout: 10000 }).catch(() => {})
 
     const pdf = await page.pdf({
@@ -86,7 +129,7 @@ app.post('/api/pdf', requireAuth, async (req, res) => {
       printBackground: true,
       margin: { top: '15mm', bottom: '15mm', left: '15mm', right: '15mm' }
     })
-    await browser.close()
+    await page.close()
 
     const safeDate = session.date ? session.date.replace(/\./g, '-') : 'Datum'
     const safeName = (session.mentorName || 'Mentor').replace(/[^a-zA-Z0-9äöüÄÖÜß_\- ]/g, '')
@@ -94,8 +137,11 @@ app.post('/api/pdf', requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="Mirror_${safeName}_${safeDate}.pdf"`)
     res.send(pdf)
   } catch (err) {
+    if (page) await page.close().catch(() => {})
     console.error('PDF error:', err)
     res.status(500).json({ error: 'PDF-Generierung fehlgeschlagen' })
+  } finally {
+    _pdfQueue--
   }
 })
 
