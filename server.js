@@ -101,9 +101,11 @@ app.post('/api/login', loginLimiter, (req, res) => {
 })
 
 app.post('/api/pdf', requireAuth, pdfLimiter, async (req, res) => {
-  const { sessionCode } = req.body
+  const { sessionCode, ownerKey } = req.body
   const session = sessions[sessionCode]
   if (!session) return res.status(404).json({ error: 'Session nicht gefunden' })
+  // Nur der Ersteller (Owner-Key) darf die anonyme Auswertung herunterladen.
+  if (ownerKey !== session.ownerKey) return res.status(403).json({ error: 'Kein Zugriff auf diese Auswertung' })
 
   // Concurrency-Schutz: max. 3 PDFs gleichzeitig
   if (_pdfQueue >= PDF_CONCURRENCY) {
@@ -158,8 +160,14 @@ io.on('connection', (socket) => {
     let code
     do { code = generateCode() } while (sessions[code])
 
+    // Geheimer Owner-Key: nur der Ersteller erhält ihn. Wird im Browser (localStorage)
+    // gespeichert und ermöglicht das spätere Wieder-Betreten der Mentor-Ansicht nach
+    // Reload/Crash/Tab-Wechsel. Wird NIE über getSessionsPublic ausgeliefert.
+    const ownerKey = crypto.randomBytes(24).toString('hex')
+
     sessions[code] = {
       code,
+      ownerKey,
       status: 'active',
       mentorName: mentorName.trim(),
       date: new Date().toLocaleDateString('de-DE'),
@@ -173,9 +181,35 @@ io.on('connection', (socket) => {
     socket.data.role = 'mentor'
     socket.emit('session-created', {
       session: getSessionsPublic().find(s => s.code === code),
-      code
+      code,
+      ownerKey
     })
     io.emit('sessions-state', getSessionsPublic())
+  })
+
+  // Mentor kehrt nach Reload/Crash/Tab-Schließen in seine Session zurück.
+  // Nur mit gültigem Login-Token UND passendem Owner-Key (= echter Ersteller).
+  socket.on('resume-session', ({ sessionCode, ownerKey, token }) => {
+    if (!token || !activeSessions.has(token)) {
+      socket.emit('resume-error', { sessionCode, message: 'Nicht authentifiziert.' })
+      return
+    }
+    const session = sessions[sessionCode]
+    if (!session) {
+      socket.emit('resume-error', { sessionCode, message: 'Diese Session existiert nicht mehr.' })
+      return
+    }
+    if (!ownerKey || ownerKey !== session.ownerKey) {
+      socket.emit('resume-error', { sessionCode, message: 'Kein Zugriff auf diese Session.' })
+      return
+    }
+    socket.join(`session-${sessionCode}`)
+    socket.data.sessionCode = sessionCode
+    socket.data.role = 'mentor'
+    session.mentorSocketId = socket.id
+    socket.emit('session-resumed', {
+      session: getSessionsPublic().find(s => s.code === sessionCode)
+    })
   })
 
   socket.on('join-session', ({ sessionCode }) => {
@@ -192,9 +226,29 @@ io.on('connection', (socket) => {
     })
   })
 
-  socket.on('submit-feedback', ({ sessionCode, answers }) => {
+  // Leises Wieder-Beitreten nach Reconnect (Mentee): stellt die Room-Mitgliedschaft
+  // wieder her, OHNE ein UI-Event zu senden — sonst gingen Survey-Eingaben verloren.
+  socket.on('rejoin-session', ({ sessionCode }) => {
     const session = sessions[sessionCode]
-    if (!session || session.status !== 'active') return
+    if (!session) return
+    socket.join(`session-${sessionCode}`)
+    socket.data.sessionCode = sessionCode
+    socket.data.role = 'mentee'
+  })
+
+  socket.on('submit-feedback', ({ sessionCode, answers, submissionId }) => {
+    const session = sessions[sessionCode]
+    if (!session) { socket.emit('feedback-rejected', { reason: 'gone' }); return }
+    session.submittedIds = session.submittedIds || new Set()
+    // Idempotenz: bereits verarbeitete Einreichung (z.B. Socket.io-Replay nach
+    // Reconnect) erneut bestätigen, aber NICHT doppelt zählen.
+    if (submissionId && session.submittedIds.has(submissionId)) {
+      socket.emit('feedback-accepted')
+      return
+    }
+    // Session bereits beendet → Mentee aktiv informieren statt still verwerfen.
+    if (session.status !== 'active') { socket.emit('feedback-rejected', { reason: 'closed' }); return }
+    if (submissionId) session.submittedIds.add(submissionId)
     session.submissions.push(answers)
     const submitted = session.submissions.length
     const expected = session.expectedMentees
@@ -207,10 +261,11 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('end-session', ({ sessionCode, token }) => {
+  socket.on('end-session', ({ sessionCode, token, ownerKey }) => {
     if (!token || !activeSessions.has(token)) return
     const session = sessions[sessionCode]
     if (!session) return
+    if (ownerKey !== session.ownerKey) return
     session.status = 'complete'
     io.to(`session-${sessionCode}`).emit('session-complete', {
       submitted: session.submissions.length,
@@ -219,8 +274,11 @@ io.on('connection', (socket) => {
     io.emit('sessions-state', getSessionsPublic())
   })
 
-  socket.on('reset-session', ({ sessionCode, token }) => {
+  socket.on('reset-session', ({ sessionCode, token, ownerKey }) => {
     if (!token || !activeSessions.has(token)) return
+    const session = sessions[sessionCode]
+    if (!session) return
+    if (ownerKey !== session.ownerKey) return
     delete sessions[sessionCode]
     io.emit('sessions-state', getSessionsPublic())
   })
@@ -243,6 +301,18 @@ const CATEGORY_REFLEXION_QUESTIONS = [
   'In welchen Situationen wirkt diese Person für dich nicht wie eine echte Führungspersönlichkeit?',
   'In welchen finanziellen Themen würdest du dieser Person keinen Rat zutrauen?'
 ]
+
+// HTML-Escaping für Nutzereingaben im PDF — verhindert Layout-/Injection-Schäden,
+// wenn ein Name oder Freitext Sonderzeichen wie < > " ' & enthält.
+const escapeHtml = (str) => String(str == null ? '' : str)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
+// Sehr lange Freitexte kürzen, damit das PDF-Layout nicht bricht.
+const clampText = (str, max = 1500) => {
+  const s = String(str == null ? '' : str)
+  return s.length > max ? s.slice(0, max) + ' […]' : s
+}
 
 function generatePDFHtml(session, logoBase64) {
   const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1) : '–'
@@ -295,7 +365,7 @@ function generatePDFHtml(session, logoBase64) {
   }).join('')
 
   const answerBlock = (answers) => answers.length > 0
-    ? answers.map(a => `<p style="color:#e0e0e0;font-size:11px;padding:6px 10px;background:rgba(0,0,0,0.3);border-left:2px solid #5CE1E6;border-radius:3px;margin:4px 0;line-height:1.5">"${a}"</p>`).join('')
+    ? answers.map(a => `<p style="color:#e0e0e0;font-size:11px;padding:6px 10px;background:rgba(0,0,0,0.3);border-left:2px solid #5CE1E6;border-radius:3px;margin:4px 0;line-height:1.5;word-break:break-word;overflow-wrap:break-word">"${escapeHtml(clampText(a))}"</p>`).join('')
     : '<p style="color:rgba(255,255,255,0.3);font-size:11px;font-style:italic">Keine Antworten.</p>'
 
   const catSections = catStats.map((cat, idx) => `
@@ -362,7 +432,7 @@ body { background:#072330;color:#fff;font-family:'Noto Sans Display',sans-serif;
   <div>
     ${logoBase64 ? `<img src="${logoBase64}" style="height:32px;margin-bottom:12px;display:block">` : ''}
     <h1 style="font-family:Unbounded,sans-serif;font-size:20px;color:#fff;margin-bottom:4px">Mentor Influence Mirror</h1>
-    <p style="color:rgba(255,255,255,0.6);font-size:12px">Feedback-Auswertung für <strong style="color:#00E9B9">${session.mentorName}</strong> · ${session.date}</p>
+    <p style="color:rgba(255,255,255,0.6);font-size:12px">Feedback-Auswertung für <strong style="color:#00E9B9">${escapeHtml(session.mentorName)}</strong> · ${escapeHtml(session.date)}</p>
   </div>
   <div style="text-align:right">
     <p style="font-family:Unbounded,sans-serif;font-size:28px;color:#00E9B9">${session.submissions.length}</p>

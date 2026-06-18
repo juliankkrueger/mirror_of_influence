@@ -290,6 +290,15 @@
       </div>
     </div>
 
+    <!-- Owner Section: eigene Sessions verwalten (nur sichtbar wenn vorhanden) -->
+    <div id="owner-section" style="margin-bottom:48px;display:none">
+      <p class="label" style="margin-bottom:10px;color:var(--teal)">Deine Sessions</p>
+      <h2 class="font-heading" style="font-size:20px;margin-bottom:16px">Verwalten & Auswertung</h2>
+      <div id="owner-sessions-list" class="sessions-list">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
     <!-- Mentee Section -->
     <div>
       <p class="label" style="margin-bottom:16px">Aktive Sessions — als Mentee beitreten</p>
@@ -435,9 +444,15 @@
     <button class="btn btn-primary" style="width:100%;margin-bottom:12px" id="pdf-download-btn" onclick="downloadPDF()">
       PDF herunterladen
     </button>
-    <button class="btn btn-outline" style="width:100%;display:none" id="new-session-btn" onclick="resetSession()">
-      Zurück zur Lobby
+    <button class="btn btn-outline" style="width:100%;margin-bottom:12px" onclick="backToLobby()">
+      Zur Lobby (Auswertung bleibt abrufbar)
     </button>
+    <button class="btn btn-danger" style="width:100%" id="new-session-btn" onclick="resetSession()">
+      Session endgültig löschen
+    </button>
+    <p class="text-muted" style="font-size:11px;margin-top:10px;line-height:1.5">
+      Solange die Session nicht gelöscht ist, findest du sie in der Lobby unter „Deine Sessions" wieder.
+    </p>
   </div>
 </div>
 
@@ -619,6 +634,31 @@ let currentSessionCode = null
 let currentRole = null // 'mentor' | 'mentee'
 let pendingJoinCode = null // from ?join=CODE URL param
 let sessionToken = null
+let currentOwnerKey = null // Owner-Key der aktuell verwalteten Session
+let lastSessionsData = [] // zuletzt empfangene Sessionliste (für lokales Re-Render)
+
+// ── Owner-Keys (localStorage) ───────────────────────────────────────────────
+// Merkt sich pro Session-Code den geheimen Owner-Key. Übersteht Reload, Crash und
+// Tab-Schließen, sodass der Mentor seine Session über die Lobby wieder betreten kann.
+const OWNER_STORE_KEY = 'mof_owner_keys'
+
+function getOwnerKeys() {
+  try { return JSON.parse(localStorage.getItem(OWNER_STORE_KEY)) || {} }
+  catch { return {} }
+}
+function saveOwnerKey(code, key) {
+  const all = getOwnerKeys()
+  all[code] = key
+  try { localStorage.setItem(OWNER_STORE_KEY, JSON.stringify(all)) } catch {}
+}
+function getOwnerKey(code) {
+  return getOwnerKeys()[code] || null
+}
+function removeOwnerKey(code) {
+  const all = getOwnerKeys()
+  delete all[code]
+  try { localStorage.setItem(OWNER_STORE_KEY, JSON.stringify(all)) } catch {}
+}
 
 // ── URL Parameter ─────────────────────────────────────────────────────────────
 
@@ -632,25 +672,41 @@ let sessionToken = null
 
 function initSocket() {
   socket = io()
+  let hasConnectedOnce = false
 
   socket.on('sessions-state', (sessionsData) => {
+    lastSessionsData = sessionsData
     renderSessions(sessionsData)
   })
 
-  socket.on('session-created', ({ session, code }) => {
+  socket.on('session-created', ({ session, code, ownerKey }) => {
     currentSessionCode = code
     currentRole = 'mentor'
-    // Set QR code & link
-    const joinUrl = window.location.origin + '/?join=' + code
-    document.getElementById('mentor-session-code').textContent = code
-    document.getElementById('mentor-join-link').textContent = joinUrl
-    document.getElementById('mentor-join-link').href = joinUrl
-    document.getElementById('mentor-qr-img').src =
-      'https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=072330&bgcolor=ffffff&data=' +
-      encodeURIComponent(joinUrl)
-    updateMentorCounter(0, session.expectedMentees)
+    currentOwnerKey = ownerKey
+    saveOwnerKey(code, ownerKey)
+    fillMentorWaiting(session)
     closeModal('mentor-setup-modal')
     showView('view-mentor-waiting')
+  })
+
+  socket.on('session-resumed', ({ session }) => {
+    currentSessionCode = session.code
+    currentRole = 'mentor'
+    currentOwnerKey = getOwnerKey(session.code)
+    if (session.status === 'complete') {
+      document.getElementById('complete-count').textContent = session.submittedCount
+      showView('view-mentor-complete')
+    } else {
+      fillMentorWaiting(session)
+      showView('view-mentor-waiting')
+    }
+  })
+
+  socket.on('resume-error', ({ sessionCode, message }) => {
+    // Owner-Key passt nicht mehr (Session gelöscht/neu vergeben) → lokal aufräumen
+    if (sessionCode) removeOwnerKey(sessionCode)
+    showToast(message || 'Zugriff auf diese Session nicht möglich.')
+    renderSessions(lastSessionsData) // Verwalten-Button verschwindet
   })
 
   socket.on('session-joined', ({ session }) => {
@@ -679,7 +735,17 @@ function initSocket() {
   })
 
   socket.on('feedback-accepted', () => {
+    const btn = document.getElementById('submit-btn')
+    if (btn) { btn.disabled = false; btn.textContent = 'Feedback abgeben' }
     showView('view-mentee-thankyou')
+  })
+
+  socket.on('feedback-rejected', ({ reason }) => {
+    const btn = document.getElementById('submit-btn')
+    if (btn) { btn.disabled = false; btn.textContent = 'Feedback abgeben' }
+    showToast(reason === 'closed'
+      ? 'Diese Session wurde bereits beendet – dein Feedback konnte nicht mehr gezählt werden.'
+      : 'Diese Session ist nicht mehr verfügbar.')
   })
 
   socket.on('error-msg', (msg) => {
@@ -691,8 +757,19 @@ function initSocket() {
     showToast('Verbindung unterbrochen – wird neu verbunden…')
   })
 
-  socket.on('reconnect', () => {
+  // 'connect' feuert bei jeder (Wieder-)Verbindung. Nach einem WLAN-Aussetzer
+  // (Reconnect) verliert der Socket seine Room-Mitgliedschaft → wir treten der
+  // laufenden Session automatisch wieder bei, damit Live-Updates ankommen.
+  socket.on('connect', () => {
+    if (!hasConnectedOnce) { hasConnectedOnce = true; return }
     showToast('Verbindung wiederhergestellt.')
+    if (!currentSessionCode) return
+    if (currentRole === 'mentee') {
+      socket.emit('rejoin-session', { sessionCode: currentSessionCode })
+    } else if (currentRole === 'mentor') {
+      const ownerKey = getOwnerKey(currentSessionCode)
+      if (ownerKey) socket.emit('resume-session', { sessionCode: currentSessionCode, ownerKey, token: sessionToken })
+    }
   })
 
   // Auto-join from URL after socket connects
@@ -734,9 +811,54 @@ document.getElementById('login-password').addEventListener('keydown', e => {
 // ── Sessions Lobby ────────────────────────────────────────────────────────────
 
 function renderSessions(sessionsData) {
-  const list = document.getElementById('sessions-list')
-  const active = sessionsData.filter(s => s.status === 'active')
+  sessionsData = sessionsData || []
+  const ownerKeys = getOwnerKeys()
 
+  // Verwaiste Owner-Keys aufräumen (Session existiert serverseitig nicht mehr)
+  const liveCodes = new Set(sessionsData.map(s => s.code))
+  Object.keys(ownerKeys).forEach(code => { if (!liveCodes.has(code)) removeOwnerKey(code) })
+
+  const owned = sessionsData.filter(s => ownerKeys[s.code])
+  const menteeActive = sessionsData.filter(s => s.status === 'active' && !ownerKeys[s.code])
+
+  renderOwnerSessions(owned)
+  renderMenteeSessions(menteeActive)
+}
+
+// Eigene Sessions (aktiv oder abgeschlossen) — Mentor kann zurück in seine Ansicht
+function renderOwnerSessions(owned) {
+  const section = document.getElementById('owner-section')
+  const list = document.getElementById('owner-sessions-list')
+  if (!owned.length) {
+    section.style.display = 'none'
+    list.innerHTML = ''
+    return
+  }
+  section.style.display = 'block'
+  list.innerHTML = owned.map(s => {
+    const isComplete = s.status === 'complete'
+    const statusLine = isComplete
+      ? `<div style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5CE1E6" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><span style="font-size:12px;color:var(--cyan)">Abgeschlossen · Auswertung bereit</span></div>`
+      : `<div style="display:flex;align-items:center;gap:6px"><span class="pulse-dot"></span><span style="font-size:12px;color:var(--muted)">Läuft · ${s.submittedCount}/${s.expectedMentees} abgegeben</span></div>`
+    const btnLabel = isComplete ? 'Auswertung öffnen →' : 'Session verwalten →'
+    return `<div class="session-card" style="border-color:var(--teal);background:rgba(0,233,185,0.06)" onclick="resumeSession('${s.code}')">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="font-heading" style="font-size:18px;letter-spacing:3px;color:var(--teal)">${s.code}</span>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:6px">${esc(s.mentorName)}</div>
+        ${statusLine}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="btn btn-primary" style="padding:11px 22px;font-size:13px;pointer-events:none">${btnLabel}</span>
+      </div>
+    </div>`
+  }).join('')
+}
+
+// Fremde aktive Sessions — als Mentee beitreten
+function renderMenteeSessions(active) {
+  const list = document.getElementById('sessions-list')
   if (active.length === 0) {
     list.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:14px">
@@ -747,14 +869,13 @@ function renderSessions(sessionsData) {
   }
 
   list.innerHTML = active.map(s => {
-    const pct = s.expectedMentees ? Math.round(s.submittedCount / s.expectedMentees * 100) : 0
     return `<div class="session-card" onclick="joinSession('${s.code}')">
       <div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span class="pulse-dot"></span>
           <span class="font-heading" style="font-size:18px;letter-spacing:3px;color:var(--teal)">${s.code}</span>
         </div>
-        <div style="font-size:15px;font-weight:600;margin-bottom:4px">${s.mentorName}</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px">${esc(s.mentorName)}</div>
         <div style="font-size:12px;color:var(--muted)">${s.submittedCount}/${s.expectedMentees} Rückmeldungen abgegeben</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
@@ -794,7 +915,30 @@ function joinSession(sessionCode) {
   socket.emit('join-session', { sessionCode })
 }
 
+// ── Mentor Resume (zurück in eigene Session) ────────────────────────────────────
+
+function resumeSession(sessionCode) {
+  const ownerKey = getOwnerKey(sessionCode)
+  if (!ownerKey) {
+    showToast('Kein Zugriffsschlüssel für diese Session auf diesem Gerät.')
+    return
+  }
+  socket.emit('resume-session', { sessionCode, ownerKey, token: sessionToken })
+}
+
 // ── Mentor Waiting ────────────────────────────────────────────────────────────
+
+function fillMentorWaiting(session) {
+  const code = session.code
+  const joinUrl = window.location.origin + '/?join=' + code
+  document.getElementById('mentor-session-code').textContent = code
+  document.getElementById('mentor-join-link').textContent = joinUrl
+  document.getElementById('mentor-join-link').href = joinUrl
+  document.getElementById('mentor-qr-img').src =
+    'https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=072330&bgcolor=ffffff&data=' +
+    encodeURIComponent(joinUrl)
+  updateMentorCounter(session.submittedCount || 0, session.expectedMentees)
+}
 
 function updateMentorCounter(submitted, expected) {
   document.getElementById('mentor-counter').textContent = `${submitted}/${expected}`
@@ -804,7 +948,7 @@ function updateMentorCounter(submitted, expected) {
 
 function endSession() {
   if (confirm('Sitzung jetzt beenden? Nicht alle Mentees haben abgegeben.')) {
-    socket.emit('end-session', { sessionCode: currentSessionCode, token: sessionToken })
+    socket.emit('end-session', { sessionCode: currentSessionCode, token: sessionToken, ownerKey: currentOwnerKey })
   }
 }
 
@@ -818,7 +962,7 @@ async function downloadPDF() {
     const res = await fetch('/api/pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
-      body: JSON.stringify({ sessionCode: currentSessionCode })
+      body: JSON.stringify({ sessionCode: currentSessionCode, ownerKey: currentOwnerKey })
     })
     if (!res.ok) throw new Error('Fehler')
     const blob = await res.blob()
@@ -828,7 +972,6 @@ async function downloadPDF() {
     a.download = `Mirror_Auswertung.pdf`
     a.click()
     URL.revokeObjectURL(url)
-    document.getElementById('new-session-btn').style.display = 'block'
   } catch {
     showToast('PDF-Erstellung fehlgeschlagen. Bitte erneut versuchen.')
   } finally {
@@ -837,11 +980,18 @@ async function downloadPDF() {
   }
 }
 
+function backToLobby() {
+  // Session bleibt bestehen und ist in der Lobby unter "Deine Sessions" wieder abrufbar.
+  showView('view-lobby')
+}
+
 function resetSession() {
-  socket.emit('reset-session', { sessionCode: currentSessionCode, token: sessionToken })
+  if (!confirm('Session endgültig löschen? Die Auswertung ist danach nicht mehr abrufbar.')) return
+  socket.emit('reset-session', { sessionCode: currentSessionCode, token: sessionToken, ownerKey: currentOwnerKey })
+  if (currentSessionCode) removeOwnerKey(currentSessionCode)
   currentSessionCode = null
   currentRole = null
-  document.getElementById('new-session-btn').style.display = 'none'
+  currentOwnerKey = null
   showView('view-lobby')
 }
 
@@ -930,9 +1080,16 @@ function submitFeedback() {
   document.getElementById('submit-btn').disabled = true
   document.getElementById('submit-btn').textContent = 'Wird übermittelt…'
 
+  // Stabile ID pro Einreichung → Server kann Socket.io-Replays nach Reconnect
+  // deduplizieren, damit der Counter nicht doppelt zählt.
+  const submissionId = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'sid-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+
   socket.emit('submit-feedback', {
     sessionCode: currentSessionCode,
-    answers: { categories, global }
+    answers: { categories, global },
+    submissionId
   })
 }
 
@@ -942,6 +1099,12 @@ function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'))
   document.getElementById(id).classList.add('active')
   window.scrollTo(0, 0)
+}
+
+function esc(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
 function openModal(id) { document.getElementById(id).classList.add('open') }
